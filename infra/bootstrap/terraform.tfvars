@@ -1,1 +1,1 @@
-github_repository = "thaodinh97/goldenowl-devops-internship-challenge"
+github_repository = "thaodinh97@222206277/goldenowl-devops-internship-challenge@1403815217"

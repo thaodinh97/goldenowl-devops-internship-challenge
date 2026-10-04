@@ -140,3 +140,143 @@ jobs:
             echo "- Tag: $IMAGE_TAG"
             echo "- URI: $ECR_REPOSITORY_URL@$IMAGE_DIGEST"
           } >> "$GITHUB_STEP_SUMMARY"
+
+    deploy:
+    name: Deploy to ECS
+    needs: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    permissions:
+      contents: read
+      id-token: write
+
+    concurrency:
+      group: ecs-deploy-master
+      cancel-in-progress: false
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
+      IMAGE_TAG: ${{ github.sha }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ vars.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Resolve published image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ECR_REPOSITORY="${ECR_REPOSITORY_URL#*/}"
+
+          IMAGE_DIGEST=$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids "imageTag=$IMAGE_TAG" --query 'imageDetails[0].imageDigest' --output text)
+
+          if [[ ! "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; 
+          then
+            echo "Invalid or missing image digest." >&2
+            exit 1
+          fi
+
+          echo "TF_VAR_image_uri=$ECR_REPOSITORY_URL@$IMAGE_DIGEST" >> "$GITHUB_ENV"
+
+      - name: Terraform init
+        run: |
+          terraform -chdir=infra/app init -input=false -lockfile=readonly -backend-config=backend.hcl
+
+      - name: Check Terraform configuration
+        run: |
+          terraform -chdir=infra/app fmt -check
+          terraform -chdir=infra/app validate
+
+      - name: Reject outdated workflow run
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LATEST_SHA=$(git ls-remote origin refs/heads/master | cut -f1)
+
+          if [ "$LATEST_SHA" != "$GITHUB_SHA" ]; 
+          then
+            echo "A newer commit exists on master; deploy its workflow instead."
+            exit 1
+          fi
+
+      - name: Terraform plan
+        run: |
+          terraform -chdir=infra/app plan -input=false -lock-timeout=5m -out=deploy.tfplan
+
+      - name: Terraform apply
+        run: |
+          terraform -chdir=infra/app apply -input=false -lock-timeout=5m deploy.tfplan
+
+      - name: Verify ECS deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CLUSTER=$(terraform -chdir=infra/app output -raw cluster_name)
+          SERVICE=$(terraform -chdir=infra/app output -raw service_name)
+          EXPECTED_TASK=$(terraform -chdir=infra/app output -raw task_definition_arn)
+
+          aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" > service.json
+
+          jq -e --arg expected "$EXPECTED_TASK" '
+            (.failures | length) == 0
+            and (.services | length) == 1
+            and (
+              .services[0]
+              | .taskDefinition == $expected
+              and .runningCount == .desiredCount
+              and .pendingCount == 0
+              and (.deployments | length) == 1
+              and .deployments[0].taskDefinition == $expected
+              and .deployments[0].rolloutState == "COMPLETED"
+            )
+          ' service.json
+
+          ACTUAL_IMAGE=$(aws ecs describe-task-definition --task-definition "$EXPECTED_TASK" --query "taskDefinition.containerDefinitions[?name=='app'].image | [0]" --output text)
+
+          test "$ACTUAL_IMAGE" = "$TF_VAR_image_uri"
+
+      - name: Smoke test application
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_URL=$(terraform -chdir=infra/app output -raw application_url)
+
+          curl --fail --silent --show-error \
+            --retry 12 \
+            --retry-all-errors \
+            --retry-delay 2 \
+            --retry-max-time 60 \
+            --connect-timeout 5 \
+            --max-time 10 \
+            "$APP_URL/health" \
+            -o health.json
+
+          jq -e '.status == "ok"' health.json
+
+          {
+            echo "### Deployment successful"
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Image: $TF_VAR_image_uri"
+            echo "- Application: $APP_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
