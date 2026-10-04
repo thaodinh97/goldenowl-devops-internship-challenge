@@ -9,6 +9,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   test:
@@ -50,6 +51,51 @@ jobs:
         run: |
           IMAGE_BYTES=$(docker image inspect app:ci --format '{{.Size}}')
           echo "Image size: ${IMAGE_BYTES} bytes" >> "$GITHUB_STEP_SUMMARY"
+      
+            - name: Scan image with Trivy
+        id: trivy
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: app:ci
+          scanners: vuln
+          format: json
+          output: ${{ github.workspace }}/trivy-results.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "0"
+          timeout: 10m
+
+      - name: Generate Trivy summary and PR comment
+        if: ${{ always() && steps.trivy.outcome != 'skipped' }}
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          TRIVY_OUTCOME: ${{ steps.trivy.outcome }}
+        with:
+          script: |
+            const path = require('path');
+            const generateReport = require(
+              path.join(
+                process.env.GITHUB_WORKSPACE,
+                '.github/scripts/trivy-report.cjs'
+              )
+            );
+
+            await generateReport({ github, context, core });
+
+      - name: Upload Trivy report
+        if: ${{ always() && steps.trivy.outcome != 'skipped' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: |
+            ${{ github.workspace }}/trivy-results.json
+            ${{ github.workspace }}/trivy-summary.md
+          retention-days: 14
+          if-no-files-found: warn
   
   publish:
     name: Publish img to ECR
