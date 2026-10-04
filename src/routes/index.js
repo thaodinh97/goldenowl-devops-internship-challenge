@@ -9,4 +9,9 @@ router.get('/', (req, res) => {
     res.json(responseJson)
 })
 
+router.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok' })
+})
+
+
 module.exports = router
