@@ -12,6 +12,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src
     steps:
       - uses: actions/checkout@v4
 
@@ -19,6 +22,7 @@ jobs:
         with:
           node-version: "24"
           cache: npm
+          cache-dependency-path: src/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -27,7 +31,7 @@ jobs:
         run: npm test -- --ci --runInBand
         
       - name: Build image
-        run: docker build --platform linux/amd64 -t app:ci .
+        run: docker build -t app:ci .
 
       - name: Test container
         shell: bash
@@ -40,4 +44,4 @@ jobs:
       - name: Report image size
         run: |
           IMAGE_BYTES=$(docker image inspect app:ci --format '{{.Size}}')
-          echo "Image size: ${IMAGE_BYTES} bytes (linux/amd64, local image)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Image size: ${IMAGE_BYTES} bytes" >> "$GITHUB_STEP_SUMMARY"
