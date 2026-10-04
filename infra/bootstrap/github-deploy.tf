@@ -117,6 +117,28 @@ resource "aws_iam_role_policy" "github_deploy" {
             "iam:PassedToService" = "ecs-tasks.amazonaws.com"
           }
         }
+      },
+      {
+        Sid    = "ReadApplicationDeployments"
+        Effect = "Allow"
+
+        Action = [
+          "ecs:ListServiceDeployments",
+          "ecs:DescribeServiceDeployments",
+          "ecs:DescribeServiceRevisions"
+        ]
+
+        Resource = [
+          "arn:aws:ecs:ap-southeast-1:448678332762:service/goldenowl-devops-cluster/goldenowl-devops-service",
+          "arn:aws:ecs:ap-southeast-1:448678332762:service-deployment/goldenowl-devops-cluster/goldenowl-devops-service/*",
+          "arn:aws:ecs:ap-southeast-1:448678332762:service-revision/goldenowl-devops-cluster/goldenowl-devops-service/*"
+        ]
+      },
+      {
+        Sid      = "DeregisterOldTaskDefinitions"
+        Effect   = "Allow"
+        Action   = "ecs:DeregisterTaskDefinition"
+        Resource = "*"
       }
     ]
   })
