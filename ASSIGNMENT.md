@@ -89,6 +89,6 @@ During deployment, GitHub Actions authenticates to AWS through the GitHub OIDC p
 ![AWS architecture](diagram/aws-architecture.drawio.png)
 
 ## Resource
-- Successful CI/CD run: [[View GitHub Actions run]](https://github.com/thaodinh97/goldenowl-devops-internship-challenge/actions/runs/37196142928/job/111419982843)
+- Successful CI/CD run: [View GitHub Actions run](https://github.com/thaodinh97/goldenowl-devops-internship-challenge/actions/runs/37196142928/job/111419982843)
 - Deployment link: http://goldenowl-devops-alb-897335286.ap-southeast-1.elb.amazonaws.com/
 - URL of my GitHub repository: https://github.com/thaodinh97/goldenowl-devops-internship-challenge 
