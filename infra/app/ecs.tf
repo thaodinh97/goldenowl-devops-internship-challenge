@@ -77,6 +77,12 @@ resource "aws_ecs_task_definition" "app" {
       }
     }
   ])
+
+  skip_destroy = true
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_ecs_service" "app" {
