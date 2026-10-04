@@ -52,7 +52,7 @@ jobs:
           IMAGE_BYTES=$(docker image inspect app:ci --format '{{.Size}}')
           echo "Image size: ${IMAGE_BYTES} bytes" >> "$GITHUB_STEP_SUMMARY"
       
-            - name: Scan image with Trivy
+      - name: Scan image with Trivy
         id: trivy
         continue-on-error: true
         uses: aquasecurity/trivy-action@v0.36.0
