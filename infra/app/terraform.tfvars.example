@@ -1,0 +1,5 @@
+aws_region          = "ap-southeast-1"
+project_name        = "goldenowl-devops"
+requests_per_target = 1000
+
+image_uri = "ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/goldenowl-devops-app@sha256:..."
