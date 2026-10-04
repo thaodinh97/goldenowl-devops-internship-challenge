@@ -1,0 +1,1 @@
+github_repository = "thaodinh97/goldenowl-devops-internship-challenge"

@@ -50,3 +50,78 @@ jobs:
         run: |
           IMAGE_BYTES=$(docker image inspect app:ci --format '{{.Size}}')
           echo "Image size: ${IMAGE_BYTES} bytes" >> "$GITHUB_STEP_SUMMARY"
+  
+  publish:
+    name: Publish img to ECR
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    concurrency:
+      group: ecr-publish-main
+      cancel-in-progress: false
+    
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
+      IMAGE_TAG: ${{ github.sha }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      
+      - name: Verify aws identity
+        run: aws sts get-caller-identity
+
+      - name: Log in to Amazon ECR
+        shell: bash
+        run: |
+          set -euo pipefail
+          ECR_REGISTRY="${ECR_REPOSITORY_URL%%/*}"
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+      
+      - name: Build and push image
+        shell: bash
+        run: |
+          set -euo pipefail
+          ECR_REPOSITORY="${ECR_REPOSITORY_URL#*/}"
+
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids "imageTag=$IMAGE_TAG" > /dev/null 2> ecr-check-error.txt; 
+          then
+            echo "Image already exists; skipping build and push."
+
+          elif grep -q "ImageNotFoundException" ecr-check-error.txt; 
+          then
+            docker build -t "$ECR_REPOSITORY_URL:$IMAGE_TAG" ./src
+            echo "Pushing image to ECR..."
+            docker push "$ECR_REPOSITORY_URL:$IMAGE_TAG"
+
+          else
+            cat ecr-check-error.txt >&2
+            exit 1
+          fi
+
+      - name: Record published image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ECR_REPOSITORY="${ECR_REPOSITORY_URL#*/}"
+
+          IMAGE_DIGEST=$(aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --image-ids "imageTag=$IMAGE_TAG" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+
+          {
+            echo "### Published image"
+            echo "- Tag: $IMAGE_TAG"
+            echo "- URI: $ECR_REPOSITORY_URL@$IMAGE_DIGEST"
+          } >> "$GITHUB_STEP_SUMMARY"
