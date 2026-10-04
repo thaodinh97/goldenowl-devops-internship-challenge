@@ -88,6 +88,12 @@ During deployment, GitHub Actions authenticates to AWS through the GitHub OIDC p
 
 ![AWS architecture](diagram/aws-architecture.drawio.png)
 
+## Bonus (Optional)
+
+Trivy was added for security scanning. It uses the script trivy-report.cjs to generate PR comment for scanning result summarization.
+
+![Scanning result](diagram/trivy_pr_comment.png)
+
 ## Resource
 - Successful CI/CD run: [View GitHub Actions run](https://github.com/thaodinh97/goldenowl-devops-internship-challenge/actions/runs/37196142928/job/111419982843)
 - Deployment link: http://goldenowl-devops-alb-897335286.ap-southeast-1.elb.amazonaws.com/
