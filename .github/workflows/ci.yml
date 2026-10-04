@@ -6,6 +6,7 @@ on:
   pull_request:
     branches:
       - master
+  workflow_dispatch:
 permissions:
   contents: read
 
@@ -53,7 +54,10 @@ jobs:
   publish:
     name: Publish img to ECR
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: >-
+      github.ref == 'refs/heads/master' &&
+      (github.event_name == 'push' ||
+       github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -141,10 +145,13 @@ jobs:
             echo "- URI: $ECR_REPOSITORY_URL@$IMAGE_DIGEST"
           } >> "$GITHUB_STEP_SUMMARY"
 
-    deploy:
+  deploy:
     name: Deploy to ECS
     needs: publish
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: >-
+      github.ref == 'refs/heads/master' &&
+      (github.event_name == 'push' ||
+       github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
